@@ -1,0 +1,18 @@
+{
+  "Enterprise": {
+    "title": "Founders",
+    "content": "{{startup}}{{role}}{{role}}Hi {{name}}, this is a TEST template for {{startup}}. I noticed you are in the {{persona}} space. Would you like to discuss how we can help?\n\n{{role}}{{startup}}"
+  },
+  "Startup": {
+    "title": "Startup",
+    "content": "Hi {{name}}, I'm reaching out because I noticed {{startup}} is in the {{persona}} space. I work with companies to help optimize their development workflows. Would you be interested in a quick 5-minute conversation about how we could help {{startup}} accelerate development?"
+  },
+  "SMB": {
+    "title": "SMB",
+    "content": "Hi {{name}}, I help companies like {{startup}} increase their close rates. I'd love to share a quick strategy that could help {{startup}} hit their revenue targets faster. Do you have 2 minutes to chat?"
+  },
+  "Tech": {
+    "title": "Tech",
+    "content": "Hi {{name}}, I noticed {{startup}} has been doing great work in the {{persona}} space. I help tech companies optimize their lead generation. Would you be interested in a brief conversation about how we could help {{startup}} generate more qualified leads?"
+  }
+}

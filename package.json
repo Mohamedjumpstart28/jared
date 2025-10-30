@@ -1,0 +1,30 @@
+{
+  "name": "sdr-script-tool",
+  "version": "1.0.0",
+  "description": "SDR Script Tool for streamlined cold-calling workflows",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "nodemon server/index.js",
+    "client": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "install-all": "npm install && cd client && npm install"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1",
+    "csv-parser": "^3.0.0",
+    "@slack/web-api": "^6.10.0",
+    "dotenv": "^16.3.1",
+    "uuid": "^9.0.1",
+    "@vercel/kv": "^1.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["sdr", "cold-calling", "sales", "automation"],
+  "author": "SDR Script Tool",
+  "license": "MIT"
+}
