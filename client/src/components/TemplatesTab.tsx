@@ -14,6 +14,29 @@ interface TemplatesTabProps {
 }
 
 const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChange }) => {
+  // Built-in defaults and local fallback (for deployments without API routes)
+  const defaultTemplates: Template = {
+    Enterprise: {
+      title: 'Enterprise',
+      content:
+        "Hi {{name}}, this is [Your Name] from [Your Company]. I noticed {{startup}} has been growing rapidly in the {{persona}} space. I help companies like yours streamline their sales processes. Do you have 2 minutes to discuss how we could help {{startup}} increase revenue?",
+    },
+    Startup: {
+      title: 'Startup',
+      content:
+        "Hi {{name}}, I'm reaching out because I noticed {{startup}} is in the {{persona}} space. I work with companies to help optimize their development workflows. Would you be interested in a quick 5-minute conversation about how we could help {{startup}} accelerate development?",
+    },
+    SMB: {
+      title: 'SMB',
+      content:
+        "Hi {{name}}, I help companies like {{startup}} increase their close rates. I'd love to share a quick strategy that could help {{startup}} hit their revenue targets faster. Do you have 2 minutes to chat?",
+    },
+    Tech: {
+      title: 'Tech',
+      content:
+        "Hi {{name}}, I noticed {{startup}} has been doing great work in the {{persona}} space. I help tech companies optimize their lead generation. Would you be interested in a brief conversation about how we could help {{startup}} generate more qualified leads?",
+    },
+  };
   const [editingPersona, setEditingPersona] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<string>('');
   const [editingTitle, setEditingTitle] = useState<string>('');
@@ -28,7 +51,17 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
       const response = await axios.get('/api/templates');
       onTemplatesChange(response.data.templates);
     } catch (error) {
-      console.error('Error fetching templates:', error);
+      // Fallback when /api/templates is unavailable in the deployment
+      try {
+        const saved = localStorage.getItem('templates');
+        if (saved) {
+          onTemplatesChange(JSON.parse(saved));
+        } else {
+          onTemplatesChange(defaultTemplates);
+        }
+      } catch (_) {
+        onTemplatesChange(defaultTemplates);
+      }
     }
   }, [onTemplatesChange]);
 
@@ -61,12 +94,24 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
         }
       };
       onTemplatesChange(updatedTemplates);
+      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
       setEditingPersona(null);
       setEditingTemplate('');
       setEditingTitle('');
     } catch (error) {
-      console.error('Error saving template:', error);
-      alert('Error saving template. Please try again.');
+      // Update locally if API is not available
+      const updatedTemplates = { 
+        ...templates, 
+        [editingPersona]: {
+          title: editingTitle,
+          content: editingTemplate
+        }
+      };
+      onTemplatesChange(updatedTemplates);
+      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
+      setEditingPersona(null);
+      setEditingTemplate('');
+      setEditingTitle('');
     } finally {
       setLoading(false);
     }
@@ -97,12 +142,25 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
         }
       };
       onTemplatesChange(updatedTemplates);
+      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
       setNewPersona('');
       setNewContent('');
       setShowAddForm(false);
     } catch (error) {
-      console.error('Error adding template:', error);
-      alert('Error adding template. Please try again.');
+      // Fallback to local update only when API is missing in deployment
+      const personaKey = newPersona.trim();
+      const updatedTemplates = {
+        ...templates,
+        [personaKey]: {
+          title: personaKey,
+          content: newContent
+        }
+      };
+      onTemplatesChange(updatedTemplates);
+      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
+      setNewPersona('');
+      setNewContent('');
+      setShowAddForm(false);
     } finally {
       setAdding(false);
     }
