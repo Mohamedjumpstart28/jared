@@ -41,13 +41,24 @@ async function saveTemplates(templates) {
   if (USE_KV && kv) {
     try {
       await kv.set('templates', templates);
-      return;
+      return true;
     } catch (e) {
       console.error('KV set templates failed:', e);
+      return false;
     }
   }
-  const filePath = path.join(process.cwd(), 'server', 'data', 'templates.json');
-  fs.writeFileSync(filePath, JSON.stringify(templates, null, 2), 'utf8');
+  
+  // Vercel serverless has a read-only filesystem; skip file write
+  // Templates will persist in client localStorage as fallback
+  try {
+    const filePath = path.join(process.cwd(), 'server', 'data', 'templates.json');
+    fs.writeFileSync(filePath, JSON.stringify(templates, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    // Expected on Vercel; not an error
+    console.log('Filesystem write skipped (read-only environment)');
+    return false;
+  }
 }
 
 module.exports = async (req, res) => {

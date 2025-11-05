@@ -72,11 +72,11 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
       const autoMapping: ColumnMapping = {
         name: 'First Name',
         role: 'Hiring Role',
-        persona: 'Role Title',
+        persona: 'Title',
         startup: 'Company Name',
         phone: 'Mobile Phone',
-        linkedin: '',
-        template: ''
+        linkedin: 'Person Linkedin Url',
+        template: 'Template'
       };
 
       headers.forEach((header: string) => {
