@@ -65,7 +65,41 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
 
       setPreview(response.data.contacts);
       setRoles(response.data.roles);
-      setCsvHeaders(response.data.headers || []);
+      const headers = response.data.headers || [];
+      setCsvHeaders(headers);
+      
+      // Auto-map columns immediately after upload
+      const autoMapping: ColumnMapping = {
+        name: 'First Name',
+        role: 'Hiring Role',
+        persona: 'Role Title',
+        startup: 'Company Name',
+        phone: 'Mobile Phone',
+        linkedin: '',
+        template: ''
+      };
+
+      headers.forEach((header: string) => {
+        const lowerHeader = header.toLowerCase();
+        // Override defaults if exact matches exist in CSV
+        if (lowerHeader === 'first name' || lowerHeader === 'name') {
+          autoMapping.name = header;
+        } else if (lowerHeader === 'hiring role') {
+          autoMapping.role = header;
+        } else if (lowerHeader === 'role title') {
+          autoMapping.persona = header;
+        } else if (lowerHeader === 'company name') {
+          autoMapping.startup = header;
+        } else if (lowerHeader === 'mobile phone' || lowerHeader === 'phone') {
+          autoMapping.phone = header;
+        } else if (lowerHeader.includes('linkedin') || (lowerHeader.includes('profile') && lowerHeader.includes('url'))) {
+          autoMapping.linkedin = header;
+        } else if (lowerHeader.includes('template') || lowerHeader.includes('script')) {
+          autoMapping.template = header;
+        }
+      });
+
+      setColumnMapping(autoMapping);
       setShowMapping(true);
     } catch (error) {
       console.error('Upload error:', error);
@@ -92,26 +126,27 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
 
   const autoMapColumns = () => {
     const autoMapping: ColumnMapping = {
-      name: '',
-      role: '',
-      persona: '',
-      startup: '',
-      phone: '',
+      name: 'First Name',
+      role: 'Hiring Role',
+      persona: 'Role Title',
+      startup: 'Company Name',
+      phone: 'Mobile Phone',
       linkedin: '',
       template: ''
     };
 
     csvHeaders.forEach(header => {
       const lowerHeader = header.toLowerCase();
-      if (lowerHeader.includes('name') || lowerHeader.includes('first') || lowerHeader.includes('last')) {
+      // Override defaults if exact matches or better fits exist
+      if (lowerHeader === 'first name' || lowerHeader === 'name') {
         autoMapping.name = header;
-      } else if (lowerHeader.includes('role') || lowerHeader.includes('title') || lowerHeader.includes('position')) {
+      } else if (lowerHeader === 'hiring role') {
         autoMapping.role = header;
-      } else if (lowerHeader.includes('persona') || lowerHeader.includes('type') || lowerHeader.includes('category')) {
+      } else if (lowerHeader === 'role title') {
         autoMapping.persona = header;
-      } else if (lowerHeader.includes('startup') || lowerHeader.includes('company') || lowerHeader.includes('organization')) {
+      } else if (lowerHeader === 'company name') {
         autoMapping.startup = header;
-      } else if (lowerHeader.includes('phone') || lowerHeader.includes('mobile') || lowerHeader.includes('tel')) {
+      } else if (lowerHeader === 'mobile phone' || lowerHeader === 'phone') {
         autoMapping.phone = header;
       } else if (lowerHeader.includes('linkedin') || (lowerHeader.includes('profile') && lowerHeader.includes('url'))) {
         autoMapping.linkedin = header;
