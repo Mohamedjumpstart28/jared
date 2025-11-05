@@ -13,30 +13,95 @@ interface TemplatesTabProps {
   onTemplatesChange: (templates: Template) => void;
 }
 
-const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChange }) => {
-  // Built-in defaults and local fallback (for deployments without API routes)
-  const defaultTemplates: Template = {
-    Enterprise: {
-      title: 'Enterprise',
-      content:
-        "Hi {{name}}, this is [Your Name] from [Your Company]. I noticed {{startup}} has been growing rapidly in the {{persona}} space. I help companies like yours streamline their sales processes. Do you have 2 minutes to discuss how we could help {{startup}} increase revenue?",
-    },
-    Startup: {
-      title: 'Startup',
-      content:
-        "Hi {{name}}, I'm reaching out because I noticed {{startup}} is in the {{persona}} space. I work with companies to help optimize their development workflows. Would you be interested in a quick 5-minute conversation about how we could help {{startup}} accelerate development?",
-    },
-    SMB: {
-      title: 'SMB',
-      content:
-        "Hi {{name}}, I help companies like {{startup}} increase their close rates. I'd love to share a quick strategy that could help {{startup}} hit their revenue targets faster. Do you have 2 minutes to chat?",
-    },
-    Tech: {
-      title: 'Tech',
-      content:
-        "Hi {{name}}, I noticed {{startup}} has been doing great work in the {{persona}} space. I help tech companies optimize their lead generation. Would you be interested in a brief conversation about how we could help {{startup}} generate more qualified leads?",
-    },
+// Enhanced basic formatter: bold **text**, italic *text* or _text_, bullets "- ", numbers "1. ", headings with #/##/###, nested lists via leading spaces (2 spaces per level)
+const renderBasicFormatting = (text: string) => {
+  const esc = (s: string) => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c] as string));
+  const safe = esc(text);
+  // Headings first (###, ##, # at line start)
+  const headingProcessed = safe
+    .split('\n')
+    .map(line => {
+      if (/^\s*###\s+/.test(line)) return `<h3>${line.replace(/^\s*###\s+/, '')}</h3>`;
+      if (/^\s*##\s+/.test(line)) return `<h2>${line.replace(/^\s*##\s+/, '')}</h2>`;
+      if (/^\s*#\s+/.test(line)) return `<h1>${line.replace(/^\s*#\s+/, '')}</h1>`;
+      return line;
+    })
+    .join('\n');
+
+  // Bold and italic inline
+  let html = headingProcessed
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|\W)_(.+?)_(?=\W|$)/g, '$1<em>$2</em>') // _italic_
+    .replace(/\*(.+?)\*/g, '<em>$1</em>'); // *italic*
+
+  // Lists with nesting
+  const lines = html.split('\n');
+  let out: string[] = [];
+  type ListType = 'ul' | 'ol';
+  let listStack: ListType[] = [];
+
+  const closeToLevel = (level: number) => {
+    while (listStack.length > level) {
+      const t = listStack.pop();
+      out.push(t === 'ul' ? '</ul>' : '</ol>');
+    }
   };
+
+  const ensureLevelType = (level: number, type: ListType) => {
+    // Bring to level
+    while (listStack.length < level) {
+      // Default to current type when increasing levels
+      listStack.push(type);
+      out.push(type === 'ul' ? '<ul>' : '<ol>');
+    }
+    // If at the same level but wrong type, switch
+    if (listStack.length === level && listStack[level - 1] && listStack[level - 1] !== type) {
+      // close current level then reopen with correct type
+      const prev = listStack.pop();
+      if (prev) out.push(prev === 'ul' ? '</ul>' : '</ol>');
+      listStack.push(type);
+      out.push(type === 'ul' ? '<ul>' : '<ol>');
+    }
+  };
+
+  for (const rawLine of lines) {
+    const listMatch = rawLine.match(/^(\s*)(-|\d+\.)\s+(.*)$/);
+    const isHeadingHtml = /^\s*<h[1-3]>/.test(rawLine);
+
+    if (listMatch) {
+      const indent = listMatch[1] || '';
+      const bullet = listMatch[2];
+      const content = listMatch[3];
+      const level = Math.max(0, Math.floor(indent.replace(/\t/g, '  ').length / 2)) + 1; // levels start at 1 for first list
+      const type: ListType = /^\d+\./.test(bullet) ? 'ol' : 'ul';
+
+      // Adjust stack to desired level/type
+      closeToLevel(level - 1);
+      ensureLevelType(level, type);
+      out.push(`<li>${content}</li>`);
+      continue;
+    }
+
+    // Non-list line: close all lists
+    closeToLevel(0);
+
+    if (isHeadingHtml) {
+      out.push(rawLine);
+    } else if (rawLine.trim().length) {
+      out.push(`<p>${rawLine}</p>`);
+    } else {
+      // Preserve empty lines as line breaks
+      out.push('<br>');
+    }
+  }
+
+  // Close any remaining lists
+  closeToLevel(0);
+
+  return out.join('');
+};
+
+const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChange }) => {
   const [editingPersona, setEditingPersona] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<string>('');
   const [editingTitle, setEditingTitle] = useState<string>('');
@@ -51,17 +116,7 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
       const response = await axios.get('/api/templates');
       onTemplatesChange(response.data.templates);
     } catch (error) {
-      // Fallback when /api/templates is unavailable in the deployment
-      try {
-        const saved = localStorage.getItem('templates');
-        if (saved) {
-          onTemplatesChange(JSON.parse(saved));
-        } else {
-          onTemplatesChange(defaultTemplates);
-        }
-      } catch (_) {
-        onTemplatesChange(defaultTemplates);
-      }
+      console.error('Error fetching templates:', error);
     }
   }, [onTemplatesChange]);
 
@@ -85,33 +140,20 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
         template: editingTemplate,
         title: editingTitle
       });
-      
-      const updatedTemplates = { 
-        ...templates, 
+      const updatedTemplates = {
+        ...templates,
         [editingPersona]: {
           title: editingTitle,
           content: editingTemplate
         }
       };
       onTemplatesChange(updatedTemplates);
-      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
       setEditingPersona(null);
       setEditingTemplate('');
       setEditingTitle('');
     } catch (error) {
-      // Update locally if API is not available
-      const updatedTemplates = { 
-        ...templates, 
-        [editingPersona]: {
-          title: editingTitle,
-          content: editingTemplate
-        }
-      };
-      onTemplatesChange(updatedTemplates);
-      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
-      setEditingPersona(null);
-      setEditingTemplate('');
-      setEditingTitle('');
+      console.error('Error saving template:', error);
+      alert('Error saving template. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -123,58 +165,30 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
     setEditingTitle('');
   };
 
-  const handleAddTemplate = async () => {
-    if (!newPersona.trim() || !newContent.trim()) {
-      alert('Please provide a persona key and some template content.');
-      return;
-    }
-    setAdding(true);
-    try {
-      const personaKey = newPersona.trim();
-      await axios.put(`/api/templates/${personaKey}`, {
-        template: newContent
-      });
-      const updatedTemplates = {
-        ...templates,
-        [personaKey]: {
-          title: personaKey,
-          content: newContent
-        }
-      };
-      onTemplatesChange(updatedTemplates);
-      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
-      setNewPersona('');
-      setNewContent('');
-      setShowAddForm(false);
-    } catch (error) {
-      // Fallback to local update only when API is missing in deployment
-      const personaKey = newPersona.trim();
-      const updatedTemplates = {
-        ...templates,
-        [personaKey]: {
-          title: personaKey,
-          content: newContent
-        }
-      };
-      onTemplatesChange(updatedTemplates);
-      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
-      setNewPersona('');
-      setNewContent('');
-      setShowAddForm(false);
-    } finally {
-      setAdding(false);
-    }
-  };
-
   const getAvailableVariables = () => {
     return ['name', 'role', 'persona', 'startup', 'phone'];
   };
 
-  const insertVariable = (variable: string) => {
-    const cursorPos = (document.getElementById('template-editor') as HTMLTextAreaElement)?.selectionStart || 0;
-    const newTemplate = editingTemplate.slice(0, cursorPos) + `{{${variable}}}` + editingTemplate.slice(cursorPos);
-    setEditingTemplate(newTemplate);
+  const insertAtSelection = (inserter: (selection: string) => string) => {
+    const ta = document.getElementById('template-editor') as HTMLTextAreaElement | null;
+    const start = ta?.selectionStart ?? editingTemplate.length;
+    const end = ta?.selectionEnd ?? editingTemplate.length;
+    const before = editingTemplate.slice(0, start);
+    const sel = editingTemplate.slice(start, end);
+    const after = editingTemplate.slice(end);
+    const result = inserter(sel);
+    const next = before + result + after;
+    setEditingTemplate(next);
+    setTimeout(() => {
+      if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = before.length + result.length; }
+    }, 0);
   };
+
+  const insertVariable = (variable: string) => insertAtSelection(() => `{{${variable}}}`);
+  const wrapSelection = (before: string, after: string = before) => insertAtSelection(sel => `${before}${sel}${after}`);
+  const insertBullet = () => insertAtSelection(() => `- `);
+  const insertNumber = () => insertAtSelection(() => `1. `);
+  const insertHeading = () => insertAtSelection(sel => `## ${sel}`);
 
   return (
     <div className="templates-tab">
@@ -182,8 +196,6 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
         <h2>Call Script Templates</h2>
         <p>Manage and edit your call script templates for different personas. Use variables like {'{{name}}'}, {'{{role}}'}, {'{{persona}}'}, {'{{startup}}'}, and {'{{phone}}'} to personalize each call.</p>
       </div>
-
-      
 
       <div className="templates-list">
         {Object.keys(templates).map(persona => (
@@ -224,14 +236,24 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
                     </button>
                   ))}
                 </div>
+
+                {/* Formatting toolbar */}
+                <div className="variable-buttons" style={{marginTop: '0.5rem'}}>
+                  <span>Formatting:</span>
+                  <button className="variable-button" onClick={() => wrapSelection('**')}>Bold</button>
+                  <button className="variable-button" onClick={() => wrapSelection('*')}>Italic</button>
+                  <button className="variable-button" onClick={insertBullet}>• Bullet</button>
+                  <button className="variable-button" onClick={insertNumber}>1. Numbered</button>
+                  <button className="variable-button" onClick={insertHeading}>H2 Heading</button>
+                </div>
                 
                 <textarea
                   id="template-editor"
                   value={editingTemplate}
                   onChange={(e) => setEditingTemplate(e.target.value)}
                   className="template-textarea"
-                  rows={6}
-                  placeholder="Enter your call script template here..."
+                  rows={8}
+                  placeholder="Use **bold**, *italic*, lines starting with - for bullets (indent with spaces), 1. for numbered lists, and ## Heading for headings."
                 />
                 
                 <div className="editor-actions">
@@ -252,7 +274,7 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
               </div>
             ) : (
               <div className="template-preview">
-                <p>{typeof templates[persona] === 'string' ? templates[persona] : (templates[persona] as any)?.content || ''}</p>
+                <div dangerouslySetInnerHTML={{__html: renderBasicFormatting(typeof templates[persona] === 'string' ? (templates[persona] as any) : (templates[persona] as any)?.content || '')}} />
               </div>
             )}
           </div>
@@ -260,14 +282,13 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
       </div>
 
       <div className="template-help">
-        <h4>Template Variables</h4>
-        <p>Use these variables in your templates to personalize each call:</p>
+        <h4>Template Tips</h4>
         <ul>
-          <li><code>{'{{name}}'}</code> - Contact's name</li>
-          <li><code>{'{{role}}'}</code> - Contact's role</li>
-          <li><code>{'{{persona}}'}</code> - Contact's persona</li>
-          <li><code>{'{{startup}}'}</code> - Startup/company name</li>
-          <li><code>{'{{phone}}'}</code> - Phone number</li>
+          <li>Bold: <code>**bold**</code></li>
+          <li>Italic: <code>*italic*</code> or <code>_italic_</code></li>
+          <li>Bullets: start line with <code>- </code> (indent with spaces for sub-bullets)</li>
+          <li>Numbered: start line with <code>1. </code> (indent with spaces for sub-levels)</li>
+          <li>Headings: <code>#</code>, <code>##</code>, or <code>###</code> followed by a space</li>
         </ul>
       </div>
 
@@ -300,15 +321,23 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
                 onChange={(e) => setNewContent(e.target.value)}
                 className="template-textarea"
                 rows={5}
-                placeholder="Enter template content. Use variables like {{name}}, {{startup}}, {{persona}}, {{role}}, {{phone}}"
+                placeholder="Enter template content. Use **bold** and '- ' to create bullet lists"
               />
               <div className="editor-actions">
-                <button onClick={handleAddTemplate} disabled={adding} className="save-button">
+                <button onClick={async () => {
+                  if (!newPersona.trim() || !newContent.trim()) { alert('Please provide a persona key and some template content.'); return; }
+                  setAdding(true);
+                  try {
+                    const personaKey = newPersona.trim();
+                    await axios.put(`/api/templates/${personaKey}`, { template: newContent });
+                    const updatedTemplates = { ...templates, [personaKey]: { title: personaKey, content: newContent } };
+                    onTemplatesChange(updatedTemplates);
+                    setNewPersona(''); setNewContent(''); setShowAddForm(false);
+                  } catch (e) { console.error(e); alert('Error adding template.'); } finally { setAdding(false); }
+                }} disabled={adding} className="save-button">
                   {adding ? 'Adding...' : 'Add Template'}
                 </button>
-                <button onClick={() => { setShowAddForm(false); setNewPersona(''); setNewContent(''); }} className="cancel-button">
-                  Cancel
-                </button>
+                <button onClick={() => { setShowAddForm(false); setNewPersona(''); setNewContent(''); }} className="cancel-button">Cancel</button>
               </div>
             </div>
           </div>

@@ -10,6 +10,8 @@ interface Contact {
   persona: string;
   startup: string;
   phone: string;
+  linkedin?: string;
+  template?: string;
 }
 
 interface Template {
@@ -25,6 +27,8 @@ interface ColumnMapping {
   persona: string;
   startup: string;
   phone: string;
+  linkedin?: string;
+  template?: string;
 }
 
 function App() {

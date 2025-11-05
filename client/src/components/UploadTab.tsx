@@ -7,6 +7,8 @@ interface Contact {
   persona: string;
   startup: string;
   phone: string;
+  linkedin?: string;
+  template?: string;
 }
 
 interface UploadTabProps {
@@ -19,6 +21,8 @@ interface ColumnMapping {
   persona: string;
   startup: string;
   phone: string;
+  linkedin?: string;
+  template?: string;
 }
 
 const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
@@ -33,7 +37,9 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
     role: '',
     persona: '',
     startup: '',
-    phone: ''
+    phone: '',
+    linkedin: '',
+    template: ''
   });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,8 +80,8 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
     const transformedContacts = preview.map(contact => {
       const transformed: any = {};
       Object.entries(columnMapping).forEach(([key, csvColumn]) => {
-        if (csvColumn && contact[csvColumn as keyof Contact]) {
-          transformed[key] = contact[csvColumn as keyof Contact];
+        if (csvColumn && (contact as any)[csvColumn]) {
+          transformed[key] = (contact as any)[csvColumn];
         }
       });
       return transformed as Contact;
@@ -90,7 +96,9 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
       role: '',
       persona: '',
       startup: '',
-      phone: ''
+      phone: '',
+      linkedin: '',
+      template: ''
     };
 
     csvHeaders.forEach(header => {
@@ -105,6 +113,10 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
         autoMapping.startup = header;
       } else if (lowerHeader.includes('phone') || lowerHeader.includes('mobile') || lowerHeader.includes('tel')) {
         autoMapping.phone = header;
+      } else if (lowerHeader.includes('linkedin') || (lowerHeader.includes('profile') && lowerHeader.includes('url'))) {
+        autoMapping.linkedin = header;
+      } else if (lowerHeader.includes('template') || lowerHeader.includes('script')) {
+        autoMapping.template = header;
       }
     });
 
@@ -137,10 +149,25 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
         >
           {uploading ? 'Uploading...' : 'Upload & Process'}
         </button>
+
+        {showMapping && file && (
+          <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #86efac', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ color: '#166534' }}>✓</span>
+            <span style={{ color: '#166534', fontWeight: 500 }}>
+              File uploaded: <strong>{file.name}</strong>
+            </span>
+          </div>
+        )}
       </div>
 
       {showMapping && csvHeaders.length > 0 && (
         <div className="mapping-section">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', padding: '0.75rem', background: '#f7fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <div>
+              <strong style={{ color: '#2d3748' }}>Uploaded File:</strong>
+              <span style={{ color: '#4a5568', marginLeft: '0.5rem' }}>{file?.name || 'No file selected'}</span>
+            </div>
+          </div>
           <h3>Map CSV Columns</h3>
           <p>Map your CSV column headers to the template variables. This ensures your call scripts use the correct data.</p>
           
@@ -208,6 +235,32 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
               <select 
                 value={columnMapping.phone} 
                 onChange={(e) => setColumnMapping({...columnMapping, phone: e.target.value})}
+              >
+                <option value="">Select column...</option>
+                {csvHeaders.map(header => (
+                  <option key={header} value={header}>{header}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mapping-row">
+              <label>LinkedIn (optional):</label>
+              <select 
+                value={columnMapping.linkedin || ''} 
+                onChange={(e) => setColumnMapping({...columnMapping, linkedin: e.target.value})}
+              >
+                <option value="">Select column...</option>
+                {csvHeaders.map(header => (
+                  <option key={header} value={header}>{header}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mapping-row">
+              <label>Template:</label>
+              <select 
+                value={columnMapping.template || ''} 
+                onChange={(e) => setColumnMapping({...columnMapping, template: e.target.value})}
               >
                 <option value="">Select column...</option>
                 {csvHeaders.map(header => (

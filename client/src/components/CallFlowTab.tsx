@@ -7,6 +7,8 @@ interface Contact {
   persona: string;
   startup: string;
   phone: string;
+  linkedin?: string;
+  template?: string;
 }
 
 interface Template {
@@ -22,8 +24,87 @@ interface CallFlowTabProps {
   templates: Template;
 }
 
+// Enhanced formatter: bold, italic, bullets, numbers, headings, nested lists using leading spaces (2 spaces per level)
+const renderBasicFormatting = (text: string) => {
+  const esc = (s: string) => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c] as string));
+  const safe = esc(text);
+
+  const headingProcessed = safe
+    .split('\n')
+    .map(line => {
+      if (/^\s*###\s+/.test(line)) return `<h3>${line.replace(/^\s*###\s+/, '')}</h3>`;
+      if (/^\s*##\s+/.test(line)) return `<h2>${line.replace(/^\s*##\s+/, '')}</h2>`;
+      if (/^\s*#\s+/.test(line)) return `<h1>${line.replace(/^\s*#\s+/, '')}</h1>`;
+      return line;
+    })
+    .join('\n');
+
+  let html = headingProcessed
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|\W)_(.+?)_(?=\W|$)/g, '$1<em>$2</em>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  const lines = html.split('\n');
+  let out: string[] = [];
+  type ListType = 'ul' | 'ol';
+  let listStack: ListType[] = [];
+
+  const closeToLevel = (level: number) => {
+    while (listStack.length > level) {
+      const t = listStack.pop();
+      out.push(t === 'ul' ? '</ul>' : '</ol>');
+    }
+  };
+
+  const ensureLevelType = (level: number, type: ListType) => {
+    while (listStack.length < level) {
+      listStack.push(type);
+      out.push(type === 'ul' ? '<ul>' : '<ol>');
+    }
+    if (listStack.length === level && listStack[level - 1] && listStack[level - 1] !== type) {
+      const prev = listStack.pop();
+      if (prev) out.push(prev === 'ul' ? '</ul>' : '</ol>');
+      listStack.push(type);
+      out.push(type === 'ul' ? '<ul>' : '<ol>');
+    }
+  };
+
+  for (const rawLine of lines) {
+    const listMatch = rawLine.match(/^(\s*)(-|\d+\.)\s+(.*)$/);
+    const isHeadingHtml = /^\s*<h[1-3]>/.test(rawLine);
+
+    if (listMatch) {
+      const indent = listMatch[1] || '';
+      const bullet = listMatch[2];
+      const content = listMatch[3];
+      const level = Math.max(0, Math.floor(indent.replace(/\t/g, '  ').length / 2)) + 1;
+      const type: ListType = /^\d+\./.test(bullet) ? 'ol' : 'ul';
+
+      closeToLevel(level - 1);
+      ensureLevelType(level, type);
+      out.push(`<li>${content}</li>`);
+      continue;
+    }
+
+    closeToLevel(0);
+
+    if (isHeadingHtml) {
+      out.push(rawLine);
+    } else if (rawLine.trim().length) {
+      out.push(`<p>${rawLine}</p>`);
+    } else {
+      // Preserve empty lines as line breaks
+      out.push('<br>');
+    }
+  }
+
+  closeToLevel(0);
+
+  return out.join('');
+};
+
 const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates }) => {
-  const [selectedPersona, setSelectedPersona] = useState<string>('');
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentScript, setCurrentScript] = useState<string>('');
@@ -31,27 +112,34 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
   const [sendingToSlack, setSendingToSlack] = useState(false);
   const [sentToSlack, setSentToSlack] = useState<boolean[]>([]);
 
-  // Template-driven persona titles (use title if present, fallback to key)
-  const templatePersonas = Array.from(new Set(
-    Object.keys(templates || {}).map(key => (templates as any)[key]?.title || key)
+  // Get unique template values from contacts
+  const availableTemplates = Array.from(new Set(
+    contacts
+      .filter(contact => contact.template)
+      .map(contact => contact.template!)
   ));
 
-  // Get unique personas from contacts
-  const personas = Array.from(new Set(contacts.map(contact => contact.persona)));
-
-  const findTemplateKeyForPersona = (personaTitle: string): string | null => {
-    const byTitle = Object.keys(templates || {}).find(k => (templates as any)[k]?.title === personaTitle);
+  // Find template key in templates object by matching the title with the template value
+  const findTemplateKey = (templateValue: string): string | null => {
+    // First try to find by title matching the template value
+    const byTitle = Object.keys(templates || {}).find(k => 
+      (templates as any)[k]?.title === templateValue
+    );
     if (byTitle) return byTitle;
-    const byKey = Object.keys(templates || {}).find(k => k === personaTitle);
-    return byKey || null;
+    
+    // Fallback: try to find by key matching the template value
+    const byKey = Object.keys(templates || {}).find(k => k === templateValue);
+    if (byKey) return byKey;
+    
+    return null;
   };
 
   const generateScript = useCallback(async () => {
     if (filteredContacts.length === 0 || currentIndex >= filteredContacts.length) return;
 
-    const templateKey = findTemplateKeyForPersona(selectedPersona);
+    const templateKey = findTemplateKey(selectedTemplate);
     if (!templateKey) {
-      setCurrentScript('No templates match persona.');
+      setCurrentScript('No templates match the selected template.');
       return;
     }
 
@@ -68,35 +156,30 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
     } finally {
       setLoading(false);
     }
-  }, [filteredContacts, currentIndex, selectedPersona, templates]);
+  }, [filteredContacts, currentIndex, selectedTemplate, templates]);
 
   useEffect(() => {
-    if (!selectedPersona) {
-      if (templatePersonas.length > 0) {
-        setSelectedPersona(templatePersonas[0]);
-      } else if (personas.length > 0) {
-        setSelectedPersona(personas[0]);
-      }
+    if (!selectedTemplate && availableTemplates.length > 0) {
+      setSelectedTemplate(availableTemplates[0]);
     }
-  }, [templatePersonas, personas, selectedPersona]);
+  }, [availableTemplates, selectedTemplate]);
 
   useEffect(() => {
-    if (selectedPersona) {
+    if (selectedTemplate) {
       const filtered = contacts.filter(contact => 
-        contact.persona === selectedPersona
+        contact.template === selectedTemplate
       );
       setFilteredContacts(filtered);
       setCurrentIndex(0);
-      // Initialize sentToSlack array for the filtered contacts
       setSentToSlack(new Array(filtered.length).fill(false));
     }
-  }, [selectedPersona, contacts]);
+  }, [selectedTemplate, contacts]);
 
   useEffect(() => {
     if (filteredContacts.length > 0 && currentIndex < filteredContacts.length) {
       generateScript();
     }
-  }, [filteredContacts, currentIndex, selectedPersona, generateScript]);
+  }, [filteredContacts, currentIndex, selectedTemplate, generateScript]);
 
   const handleNext = () => {
     if (currentIndex < filteredContacts.length - 1) {
@@ -118,8 +201,6 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
       await axios.post('/api/send-to-slack', {
         contact: filteredContacts[currentIndex]
       });
-      
-      // Mark this contact as sent to Slack
       const newSentToSlack = [...sentToSlack];
       newSentToSlack[currentIndex] = true;
       setSentToSlack(newSentToSlack);
@@ -146,19 +227,18 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
 
   return (
     <div className="call-flow-tab">
-      {/* Sub-header */}
       <div className="callflow-subheader">
         <div className="persona-selector">
-          <label htmlFor="persona-select">Select Persona Group:</label>
+          <label htmlFor="template-select">Select Template Group:</label>
           <select
-            id="persona-select"
-            value={selectedPersona}
-            onChange={(e) => setSelectedPersona(e.target.value)}
+            id="template-select"
+            value={selectedTemplate}
+            onChange={(e) => setSelectedTemplate(e.target.value)}
             className="persona-select"
           >
-            {templatePersonas.map(personaTitle => (
-              <option key={personaTitle} value={personaTitle}>
-                {personaTitle} ({contacts.filter(c => c.persona === personaTitle).length})
+            {availableTemplates.map(templateValue => (
+              <option key={templateValue} value={templateValue}>
+                {templateValue} ({contacts.filter(c => c.template === templateValue).length})
               </option>
             ))}
           </select>
@@ -189,7 +269,6 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
 
       {filteredContacts.length > 0 && currentContact && (
         <div className="callflow-grid">
-          {/* Left column: contact card */}
           <div className="contact-card">
             <div className="contact-header">
               <div className="contact-main">
@@ -203,6 +282,17 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
               </div>
             </div>
             <div className="contact-actions">
+              {currentContact.linkedin && (
+                <a 
+                  href={currentContact.linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="linkedin-button"
+                  title="View LinkedIn"
+                >
+                  <img src={'/linkedin.png'} alt="LinkedIn" className="linkedin-icon-fill" />
+                </a>
+              )}
               <button 
                 onClick={handleSendToSlack}
                 disabled={sendingToSlack || sentToSlack[currentIndex]}
@@ -218,14 +308,11 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
             </div>
           </div>
 
-          {/* Right column: script card */}
           <div className="script-card">
             {loading ? (
               <div className="script-loading">Generating script...</div>
             ) : (
-              <div className="script-content">
-                {currentScript}
-              </div>
+              <div className="script-content" dangerouslySetInnerHTML={{__html: renderBasicFormatting(currentScript)}} />
             )}
           </div>
         </div>
@@ -233,8 +320,8 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
 
       {filteredContacts.length === 0 && (
         <div className="no-contacts-role">
-          <h3>No contacts found for {selectedPersona}</h3>
-          <p>Try selecting a different persona group.</p>
+          <h3>No contacts found for {selectedTemplate}</h3>
+          <p>Try selecting a different template group.</p>
         </div>
       )}
     </div>
