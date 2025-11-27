@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import './App.css';
 import UploadTab from './components/UploadTab';
 import TemplatesTab from './components/TemplatesTab';
@@ -36,6 +37,45 @@ function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [templates, setTemplates] = useState<Template>({});
+
+  // Load templates on mount and whenever templates tab updates them
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        const response = await axios.get('/api/templates');
+        setTemplates(response.data.templates);
+      } catch (error) {
+        // Fallback to localStorage if API unavailable
+        try {
+          const saved = localStorage.getItem('templates');
+          if (saved) {
+            setTemplates(JSON.parse(saved));
+          }
+        } catch (_) {}
+      }
+    };
+    loadTemplates();
+  }, []);
+
+  // Reload templates when switching to Call Flow tab to ensure latest changes
+  useEffect(() => {
+    if (activeTab === 'callflow') {
+      const loadTemplates = async () => {
+        try {
+          const response = await axios.get('/api/templates');
+          setTemplates(response.data.templates);
+        } catch (error) {
+          try {
+            const saved = localStorage.getItem('templates');
+            if (saved) {
+              setTemplates(JSON.parse(saved));
+            }
+          } catch (_) {}
+        }
+      };
+      loadTemplates();
+    }
+  }, [activeTab]);
 
   return (
     <div className="App">
