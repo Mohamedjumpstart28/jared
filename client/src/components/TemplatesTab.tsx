@@ -135,25 +135,34 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
     if (!editingPersona) return;
 
     setLoading(true);
+    
+    const updatedTemplates = {
+      ...templates,
+      [editingPersona]: {
+        title: editingTitle,
+        content: editingTemplate
+      }
+    };
+    
     try {
       await axios.put(`/api/templates/${editingPersona}`, {
         template: editingTemplate,
         title: editingTitle
       });
-      const updatedTemplates = {
-        ...templates,
-        [editingPersona]: {
-          title: editingTitle,
-          content: editingTemplate
-        }
-      };
+      // Success: update state and persist to localStorage
       onTemplatesChange(updatedTemplates);
+      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
       setEditingPersona(null);
       setEditingTemplate('');
       setEditingTitle('');
     } catch (error) {
-      console.error('Error saving template:', error);
-      alert('Error saving template. Please try again.');
+      // API failed (expected on Vercel without KV): still update locally
+      console.log('API save failed, persisting locally:', error);
+      onTemplatesChange(updatedTemplates);
+      try { localStorage.setItem('templates', JSON.stringify(updatedTemplates)); } catch (_) {}
+      setEditingPersona(null);
+      setEditingTemplate('');
+      setEditingTitle('');
     } finally {
       setLoading(false);
     }
