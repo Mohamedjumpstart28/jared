@@ -10,6 +10,9 @@ try {
   USE_KV = false;
 }
 
+// In-memory cache for templates (persists during function warm state)
+let templateCache = null;
+
 async function readJsonBody(req) {
   return await new Promise((resolve, reject) => {
     let data = '';
@@ -29,36 +32,47 @@ async function getTemplates() {
   if (USE_KV && kv) {
     try {
       const data = await kv.get('templates');
-      if (data) return data;
+      if (data) {
+        templateCache = data;
+        return data;
+      }
     } catch (_) {}
   }
+  
+  // Return cache if available
+  if (templateCache) return templateCache;
+  
+  // Load from file
   const filePath = path.join(process.cwd(), 'server', 'data', 'templates.json');
   const raw = fs.readFileSync(filePath, 'utf8');
-  return JSON.parse(raw);
+  const templates = JSON.parse(raw);
+  templateCache = templates;
+  return templates;
 }
 
 async function saveTemplates(templates) {
+  // Always update in-memory cache first
+  templateCache = templates;
+  
   if (USE_KV && kv) {
     try {
       await kv.set('templates', templates);
       return true;
     } catch (e) {
       console.error('KV set templates failed:', e);
-      return false;
     }
   }
   
   // Vercel serverless has a read-only filesystem; skip file write
-  // Templates will persist in client localStorage as fallback
+  // Templates persist in-memory cache + client localStorage
   try {
     const filePath = path.join(process.cwd(), 'server', 'data', 'templates.json');
     fs.writeFileSync(filePath, JSON.stringify(templates, null, 2), 'utf8');
-    return true;
   } catch (e) {
     // Expected on Vercel; not an error
-    console.log('Filesystem write skipped (read-only environment)');
-    return false;
+    console.log('Filesystem write skipped (read-only environment), using in-memory cache');
   }
+  return true; // Always return success since cache is updated
 }
 
 module.exports = async (req, res) => {
