@@ -108,7 +108,6 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentScript, setCurrentScript] = useState<string>('');
-  const [loading, setLoading] = useState(false);
   const [sendingToSlack, setSendingToSlack] = useState(false);
   const [sentToSlack, setSentToSlack] = useState<boolean[]>([]);
 
@@ -134,7 +133,7 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
     return null;
   };
 
-  const generateScript = useCallback(async () => {
+  const generateScript = useCallback(() => {
     if (filteredContacts.length === 0 || currentIndex >= filteredContacts.length) return;
 
     const templateKey = findTemplateKey(selectedTemplate);
@@ -143,19 +142,26 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
       return;
     }
 
-    setLoading(true);
-    try {
-      const response = await axios.post('/api/generate-script', {
-        contact: filteredContacts[currentIndex],
-        persona: templateKey
-      });
-      setCurrentScript(response.data.script);
-    } catch (error) {
-      console.error('Error generating script:', error);
-      setCurrentScript('Error generating script. Please try again.');
-    } finally {
-      setLoading(false);
+    // Get template from local state (templates prop) - this ensures we use the latest changes
+    const templateObj = templates[templateKey];
+    if (!templateObj) {
+      setCurrentScript('Template not found.');
+      return;
     }
+
+    // Get template content
+    let script = typeof templateObj === 'string' ? templateObj : (templateObj?.content || '');
+    
+    // Apply template by replacing {{variable}} placeholders with contact data
+    const contact = filteredContacts[currentIndex];
+    if (contact && typeof contact === 'object') {
+      for (const key of Object.keys(contact)) {
+        const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+        script = script.replace(placeholder, contact[key] || '');
+      }
+    }
+
+    setCurrentScript(script);
   }, [filteredContacts, currentIndex, selectedTemplate, templates]);
 
   useEffect(() => {
@@ -309,11 +315,7 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
           </div>
 
           <div className="script-card">
-            {loading ? (
-              <div className="script-loading">Generating script...</div>
-            ) : (
-              <div className="script-content" dangerouslySetInnerHTML={{__html: renderBasicFormatting(currentScript)}} />
-            )}
+            <div className="script-content" dangerouslySetInnerHTML={{__html: renderBasicFormatting(currentScript)}} />
           </div>
         </div>
       )}
