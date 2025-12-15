@@ -157,7 +157,8 @@ const CallFlowTab: React.FC<CallFlowTabProps> = ({ contacts, roles, templates })
     if (contact && typeof contact === 'object') {
       for (const key of Object.keys(contact)) {
         const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-        script = script.replace(placeholder, contact[key] || '');
+        const value = (contact as any)[key];
+        script = script.replace(placeholder, value || '');
       }
     }
 
