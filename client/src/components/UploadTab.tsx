@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 interface Contact {
@@ -13,6 +13,8 @@ interface Contact {
 
 interface UploadTabProps {
   onUpload: (contacts: Contact[], roles: string[], columnMapping: ColumnMapping) => void;
+  savedContacts?: Contact[];
+  savedRoles?: string[];
 }
 
 interface ColumnMapping {
@@ -25,13 +27,14 @@ interface ColumnMapping {
   template?: string;
 }
 
-const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
+const UploadTab: React.FC<UploadTabProps> = ({ onUpload, savedContacts, savedRoles }) => {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<Contact[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [showMapping, setShowMapping] = useState(false);
+  const [hasSavedData, setHasSavedData] = useState(false);
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>({
     name: '',
     role: '',
@@ -41,6 +44,24 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
     linkedin: '',
     template: ''
   });
+
+  // Check for saved data on mount
+  useEffect(() => {
+    try {
+      const savedContacts = localStorage.getItem('contacts');
+      const savedRoles = localStorage.getItem('roles');
+      if (savedContacts && savedRoles) {
+        setHasSavedData(true);
+      }
+    } catch (_) {}
+  }, []);
+
+  // If we have saved contacts/roles passed as props, use them
+  useEffect(() => {
+    if (savedContacts && savedContacts.length > 0) {
+      setHasSavedData(true);
+    }
+  }, [savedContacts, savedRoles]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -79,6 +100,15 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
         template: 'Template'
       };
 
+      // First pass: Find Person LinkedIn URL specifically (prioritize over company LinkedIn)
+      headers.forEach((header: string) => {
+        const lowerHeader = header.toLowerCase();
+        if (lowerHeader === 'person linkedin url' || lowerHeader === 'person linkedin') {
+          autoMapping.linkedin = header;
+        }
+      });
+
+      // Second pass: Map all other fields
       headers.forEach((header: string) => {
         const lowerHeader = header.toLowerCase();
         // Override defaults if exact matches exist in CSV
@@ -92,7 +122,8 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
           autoMapping.startup = header;
         } else if (lowerHeader === 'mobile phone' || lowerHeader === 'phone') {
           autoMapping.phone = header;
-        } else if (lowerHeader.includes('linkedin') || (lowerHeader.includes('profile') && lowerHeader.includes('url'))) {
+        } else if ((lowerHeader.includes('linkedin') || (lowerHeader.includes('profile') && lowerHeader.includes('url'))) && !autoMapping.linkedin) {
+          // Only set LinkedIn if we haven't found Person LinkedIn URL yet
           autoMapping.linkedin = header;
         } else if (lowerHeader.includes('template') || lowerHeader.includes('script')) {
           autoMapping.template = header;
@@ -121,7 +152,62 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
       return transformed as Contact;
     });
 
+    // Save to localStorage for persistence
+    try {
+      localStorage.setItem('contacts', JSON.stringify(transformedContacts));
+      localStorage.setItem('roles', JSON.stringify(roles));
+      localStorage.setItem('columnMapping', JSON.stringify(columnMapping));
+    } catch (_) {}
+
     onUpload(transformedContacts, roles, columnMapping);
+  };
+
+  const handleClearData = () => {
+    if (window.confirm('Are you sure you want to clear all saved data? This will remove your contacts and require you to upload the CSV again.')) {
+      try {
+        localStorage.removeItem('contacts');
+        localStorage.removeItem('roles');
+        localStorage.removeItem('columnMapping');
+        setHasSavedData(false);
+        setPreview([]);
+        setFile(null);
+        setShowMapping(false);
+        // Notify parent to clear contacts/roles
+        onUpload([], [], {
+          name: '',
+          role: '',
+          persona: '',
+          startup: '',
+          phone: '',
+          linkedin: '',
+          template: ''
+        });
+      } catch (_) {}
+    }
+  };
+
+  const handleUseSavedData = () => {
+    try {
+      const savedContacts = localStorage.getItem('contacts');
+      const savedRoles = localStorage.getItem('roles');
+      const savedMapping = localStorage.getItem('columnMapping');
+      
+      if (savedContacts && savedRoles) {
+        const contacts = JSON.parse(savedContacts);
+        const roles = JSON.parse(savedRoles);
+        const mapping = savedMapping ? JSON.parse(savedMapping) : {
+          name: '',
+          role: '',
+          persona: '',
+          startup: '',
+          phone: '',
+          linkedin: '',
+          template: ''
+        };
+        
+        onUpload(contacts, roles, mapping);
+      }
+    } catch (_) {}
   };
 
   const autoMapColumns = () => {
@@ -135,6 +221,15 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
       template: ''
     };
 
+    // First pass: Find Person LinkedIn URL specifically (prioritize over company LinkedIn)
+    csvHeaders.forEach(header => {
+      const lowerHeader = header.toLowerCase();
+      if (lowerHeader === 'person linkedin url' || lowerHeader === 'person linkedin') {
+        autoMapping.linkedin = header;
+      }
+    });
+
+    // Second pass: Map all other fields
     csvHeaders.forEach(header => {
       const lowerHeader = header.toLowerCase();
       // Override defaults if exact matches or better fits exist
@@ -148,7 +243,8 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
         autoMapping.startup = header;
       } else if (lowerHeader === 'mobile phone' || lowerHeader === 'phone') {
         autoMapping.phone = header;
-      } else if (lowerHeader.includes('linkedin') || (lowerHeader.includes('profile') && lowerHeader.includes('url'))) {
+      } else if ((lowerHeader.includes('linkedin') || (lowerHeader.includes('profile') && lowerHeader.includes('url'))) && !autoMapping.linkedin) {
+        // Only set LinkedIn if we haven't found Person LinkedIn URL yet
         autoMapping.linkedin = header;
       } else if (lowerHeader.includes('template') || lowerHeader.includes('script')) {
         autoMapping.template = header;
@@ -160,9 +256,59 @@ const UploadTab: React.FC<UploadTabProps> = ({ onUpload }) => {
 
   return (
     <div className="upload-tab">
+      {hasSavedData && (savedContacts && savedContacts.length > 0) && (
+        <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#eff6ff', borderRadius: '8px', border: '1px solid #93c5fd', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ color: '#1e40af', fontSize: '1.25rem' }}>ℹ️</span>
+            <div>
+              <strong style={{ color: '#1e40af' }}>Data loaded from previous session</strong>
+              <div style={{ color: '#1e3a8a', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                {savedContacts.length} contacts loaded. You can continue your call session or upload a new CSV file.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button 
+              onClick={handleUseSavedData}
+              style={{ 
+                background: '#3b82f6', 
+                color: 'white', 
+                border: 'none', 
+                padding: '0.5rem 1rem', 
+                borderRadius: '6px', 
+                cursor: 'pointer',
+                fontWeight: 500
+              }}
+            >
+              Continue with Saved Data
+            </button>
+            <button 
+              onClick={handleClearData}
+              style={{ 
+                background: '#ef4444', 
+                color: 'white', 
+                border: 'none', 
+                padding: '0.5rem 1rem', 
+                borderRadius: '6px', 
+                cursor: 'pointer',
+                fontWeight: 500
+              }}
+            >
+              Clear Data
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="upload-section">
         <h2>Upload Apollo CSV</h2>
         <p>Upload your exported Apollo CSV file to get started with your call session.</p>
+        
+        {hasSavedData && (savedContacts && savedContacts.length > 0) && (
+          <p style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.875rem' }}>
+            Or upload a new CSV file to replace the current data.
+          </p>
+        )}
         
         <div className="file-input-container">
           <input

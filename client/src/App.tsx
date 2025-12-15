@@ -38,6 +38,20 @@ function App() {
   const [roles, setRoles] = useState<string[]>([]);
   const [templates, setTemplates] = useState<Template>({});
 
+  // Load contacts and roles from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedContacts = localStorage.getItem('contacts');
+      const savedRoles = localStorage.getItem('roles');
+      if (savedContacts) {
+        setContacts(JSON.parse(savedContacts));
+      }
+      if (savedRoles) {
+        setRoles(JSON.parse(savedRoles));
+      }
+    } catch (_) {}
+  }, []);
+
   // Load templates on mount - prioritize localStorage over API so user edits persist after refresh
   useEffect(() => {
     const loadTemplates = async () => {
@@ -133,8 +147,16 @@ function App() {
             onUpload={(contacts, roles, columnMapping) => {
               setContacts(contacts);
               setRoles(roles);
+              // Save to localStorage for persistence across refreshes
+              try {
+                localStorage.setItem('contacts', JSON.stringify(contacts));
+                localStorage.setItem('roles', JSON.stringify(roles));
+                localStorage.setItem('columnMapping', JSON.stringify(columnMapping));
+              } catch (_) {}
               setActiveTab('templates');
             }}
+            savedContacts={contacts}
+            savedRoles={roles}
           />
         )}
         {activeTab === 'templates' && (
