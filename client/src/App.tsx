@@ -57,11 +57,19 @@ function App() {
     loadTemplates();
   }, []);
 
-  // Reload templates when switching to Call Flow tab to ensure latest changes
+  // Reload templates when switching to Call Flow tab, but prioritize localStorage over API
+  // This ensures local changes persist even if API doesn't have them yet
   useEffect(() => {
     if (activeTab === 'callflow') {
       const loadTemplates = async () => {
         try {
+          // First check localStorage - it has the most recent user changes
+          const saved = localStorage.getItem('templates');
+          if (saved) {
+            setTemplates(JSON.parse(saved));
+            return; // Don't fetch from API if we have localStorage data
+          }
+          // Only fetch from API if localStorage is empty
           const response = await axios.get('/api/templates');
           setTemplates(response.data.templates);
         } catch (error) {

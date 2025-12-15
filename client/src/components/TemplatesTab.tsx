@@ -120,9 +120,8 @@ const TemplatesTab: React.FC<TemplatesTabProps> = ({ templates, onTemplatesChang
     }
   }, [onTemplatesChange]);
 
-  useEffect(() => {
-    fetchTemplates();
-  }, [fetchTemplates]);
+  // Removed useEffect that was refetching templates - this was overwriting local changes
+  // Templates are loaded initially in App.tsx and updated via onTemplatesChange when saved
 
   const handleEdit = (persona: string) => {
     setEditingPersona(persona);
