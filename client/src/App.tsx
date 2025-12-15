@@ -38,12 +38,21 @@ function App() {
   const [roles, setRoles] = useState<string[]>([]);
   const [templates, setTemplates] = useState<Template>({});
 
-  // Load templates on mount and whenever templates tab updates them
+  // Load templates on mount - prioritize localStorage over API so user edits persist after refresh
   useEffect(() => {
     const loadTemplates = async () => {
       try {
+        // First check localStorage - it has the most recent user changes
+        const saved = localStorage.getItem('templates');
+        if (saved) {
+          setTemplates(JSON.parse(saved));
+          return; // Don't fetch from API if we have localStorage data
+        }
+        // Only fetch from API if localStorage is empty
         const response = await axios.get('/api/templates');
         setTemplates(response.data.templates);
+        // Also save to localStorage for future loads
+        try { localStorage.setItem('templates', JSON.stringify(response.data.templates)); } catch (_) {}
       } catch (error) {
         // Fallback to localStorage if API unavailable
         try {
